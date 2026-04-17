@@ -1,0 +1,26 @@
+resources:
+  #infra: slurm/klone-login # uses default `ckpt` partition
+  # Available partitions: ['compute', 'ckpt', 'ckpt-all', 'ckpt-g2', 'compute-bigmem', 'compute-hugemem', 'compute-ultramem', 'cpu-g2', 'cpu-g2-mem2x', 'gpu-2080ti', 'gpu-a100', 'gpu-a40', 'gpu-h200', 'gpu-l40', 'gpu-l40s', 'gpu-p100', 'gpu-rtx6k']
+  # infra: slurm/klone-login/gpu-a40 # force a groups partition you have access to
+  accelerators: A40:1
+
+# Sync a GitHub repo to VM, note SETUP works in this repo
+# workdir:
+#  url: https://github.com/gaia-hazlab/earth2studio-test.git
+
+config:
+  slurm:
+    provision_timeout: 240 # seconds
+    sbatch_options:
+      account: escience
+
+# Check resources
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+
+# Check GPU
+run: |
+  nvidia-smi

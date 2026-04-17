@@ -1,0 +1,25 @@
+resources:
+  infra: slurm/tillicum-login
+  accelerators: H200:1
+
+# Quality of Service (QoS) is a Slurm feature that can be used to specify job priority, runtime limits, and other scheduling parameters.
+# https://hyak.uw.edu/docs/tillicum/scheduling-jobs#tillicum-qos
+# qos: has a max runtime of 1hr, good for testing
+config:
+  slurm:
+    provision_timeout: 240 # seconds
+    sbatch_options:
+      # account: tillicum_gaia
+      qos: debug
+
+workdir:
+ url: https://github.com/gaia-hazlab/earth2studio-test.git
+
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+
+run: |
+  nvidia-smi

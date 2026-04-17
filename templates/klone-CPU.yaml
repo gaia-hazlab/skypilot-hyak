@@ -1,0 +1,27 @@
+resources:
+  infra: slurm/klone-login # uses default `ckpt` partition
+  # Available partitions: ['compute', 'ckpt', 'ckpt-all', 'ckpt-g2', 'compute-bigmem', 'compute-hugemem', 'compute-ultramem', 'cpu-g2', 'cpu-g2-mem2x', 'gpu-2080ti', 'gpu-a100', 'gpu-a40', 'gpu-h200', 'gpu-l40', 'gpu-l40s', 'gpu-p100', 'gpu-rtx6k']
+  # eScience partitions:
+  #infra: slurm/klone-login/cpu-g2 # CPU=32, RAM=238G
+  #infra: slurm/klone-login/cpu-g2-mem2x # CPU=32, RAM=490G
+  #infra: slurm/klone-login/gpu-rtx6k # CPU=10, RAM=81G, GPU=2x RTX 6000
+  #infra: slurm/klone-login/gpu-a40 # CPU=52, RAM=994G, GPU=8x A40
+  # Simple resource request for testing:
+  memory: 8
+  cpus: 4
+
+# config:
+#   slurm:
+#     sbatch_options:
+#       account: escience
+
+# Check resources
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+
+# Check GPU
+run: |
+  echo "Hello Klone!"

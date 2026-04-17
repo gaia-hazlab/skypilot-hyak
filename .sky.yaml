@@ -1,0 +1,16 @@
+# Project settings (can be overridden in individual job.yaml files)
+#
+
+provision:
+ install_conda: false
+
+# # cluster_configs need to be in `~/.sky/config.yaml` not `project/.sky.yaml`
+# slurm:
+#   cluster_configs:
+#     klone-login:
+#       workdir: $SCRATCH/skypilot
+#     tillicum-login:
+#       workdir: $SCRATCH/skypilot
+#       pricing:
+#         accelerators:
+#           H200: 0.90     # $/accelerator/hr (all-in, includes cpu/memory)

@@ -1,0 +1,19 @@
+resources:
+  infra: slurm/tillicum-login
+  accelerators: H200:1
+
+# qos='interactive' is a max 8hr session
+config:
+  slurm:
+    provision_timeout: 240 # seconds
+    sbatch_options:
+      qos: interactive
+
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+
+run: |
+  nvidia-smi
