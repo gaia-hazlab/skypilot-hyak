@@ -1,0 +1,32 @@
+# https://docs.skypilot.co/en/stable/reference/yaml-spec.html#syntax
+resources:
+  infra: aws/us-west-2
+  memory: 16+
+  cpus: 4+
+  #accelerators: T4:1
+  #disk_size: 512
+  #ephemeral_storage: 50
+  #use_spot: true
+  disk_size: 256
+  # Automatically *stop* the cluster after being idle for N minutes (don't delete)
+  autostop:
+    idle_minutes: 10
+    down: false
+    wait_for: jobs_and_ssh
+
+#envs:
+ #MY_BUCKET: skypilot-temp-gcs-test
+
+# Sync code from GitHub repo to VM $PWD
+workdir:
+  url: https://github.com/huskysar/nisar-examples.git
+  ref: main
+
+# Setup Pixi for Venv management
+setup: |
+  curl -fsSL https://pixi.sh/install.sh | sh
+  source ~/.bashrc
+  pixi --version
+
+run: |
+  echo "Hello, AWS!"
