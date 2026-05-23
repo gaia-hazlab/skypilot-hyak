@@ -1,13 +1,13 @@
+# Run job for 8 hours so we can work interactively with vscode remote ssh all day
 resources:
-  infra: slurm/tillicum-login
+  infra: slurm/tillicum
   accelerators: H200:1
 
-# qos='interactive' is a max 8hr session
 config:
   slurm:
-    provision_timeout: 240 # seconds
     sbatch_options:
-      qos: interactive
+      account: gaia
+      time: "8:00:00"
 
 setup: |
   pwd

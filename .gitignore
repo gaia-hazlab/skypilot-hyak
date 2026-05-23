@@ -1,3 +1,8 @@
+CLAUDE.md
+NOTES.md 
+scripts/
+aws/
+k8s/
 *.env
 
 # Byte-compiled / optimized / DLL files

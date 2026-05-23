@@ -5,9 +5,27 @@ This repo has configuration and notes for setting up compute jobs on [UW Hyak HP
 1. Sign up for the Hyak email list for maintenance and other updates:
 https://mailman22.u.washington.edu/mailman/listinfo/hyak-users
 
-**Important: As of 04/2026 Slurm clusters cannot be automatically terminated (autostop) after idle time **
+**Important: As of 05/2026 Slurm clusters cannot be automatically terminated (autostop) after idle time, but you can specify sbatch_options:time for an explicit hard shutdown limit **
 
-**Important: This issue needs to be resolved before using SkyPilot with Hyak: https://github.com/skypilot-org/skypilot/issues/9370 **
+
+## Quickstart
+
+After going through setup you can simply run
+
+```
+# Run a specific command (e.g. nvidia-smi) on a GPU node
+sky launch --infra slurm/tillicum --gpus H200:1 -- nvidia-smi
+
+# Run more elaborate jobs (python scripts) with a yaml config file
+sky launch --infra slurm/klone --gpus A40:1 templates/klone-a40.yaml
+
+# Run the same job on AWS instead of Hyak!
+sky launch --infra aws --gpus A40:1 templates/klone-a40.yaml
+```
+
+**Important:** on Slurm `sky launch` spins up a compute node for a specified amount of time and either you must manually turn it off or wait until that time expires at which point the node is shut down. In contrast, skypilot is able to automatically shut down cloud resources after a specified 'idle time'.
+
+The skypilot [YAML config/spec](https://docs.skypilot.co/en/stable/reference/yaml-spec.html) defined both cluster resources and the job (e.g. software environment setup, mounting storage buckets, what commands or scripts to run).
 
 
 ## Hyak Setup
@@ -22,29 +40,31 @@ https://docs.skypilot.co/en/latest/reference/slurm/slurm-getting-started.html#sl
 
 ### SkyPilot slurm config
 
-We create a slurm config file (`~/.slurm/config`) that skypilot knows how to use. It mirrors what is in `~/.ssh/config`:
+We create a slurm config file (`~/.slurm/config`) that skypilot knows how to use. NOTE: not all `~/.ssh/config` are supported here, in particular skypilot handles Control itself. To avoid ssh IP bans from too many retry attempts, be sure to set the following in your `~/.ssh/config`:
 
 ```
-Host klone-login
+# eliminate all public key attempts since these HPCs require MFA login!
+Host klone.hyak.uw.edu tillicum.hyak.uw.edu
+    PubkeyAuthentication no
+```
+
+And this in your `~/.slurm/config`:
+
+```
+Host klone
     HostName klone.hyak.uw.edu
     User scottyh
-    IdentityFile ~/.ssh/id_ed25519
-    ForwardAgent yes
-    ControlMaster auto
-    ControlPath ~/.ssh/control-%r@%h:%p
-    ControlPersist 24h
+    IdentitiesOnly yes
 
-Host tillicum-login
+Host tillicum
     HostName tillicum.hyak.uw.edu
     User scottyh
-    IdentityFile ~/.ssh/id_ed25519
-    ForwardAgent yes
-    ControlMaster auto
-    ControlPath ~/.ssh/control-%r@%h:%p
-    ControlPersist 24h
+    IdentitiesOnly yes
 ```
 
 #### SkyPilot per-cluster configuration
+
+Note this is optional. However, by default on skypilot does not set slurm --time limits, causing jobs to fail to schedule on Hyak due to regular maintenance reservations. So we set a global limit of 1 hr below, which can be overriden in individual job configs.
 
 This is set in `~/.sky/config.yaml` and looks like this:
 
@@ -52,11 +72,12 @@ This is set in `~/.sky/config.yaml` and looks like this:
 # cluster_configs need to be in `~/.sky/config.yaml` not `project/.sky.yaml`
 # $SCRATCH must be set on the login node to change workdir from default of $HOME
 slurm:
-  # provision_timeout: 240
+  sbatch_options:
+    time: "0:05:00"
   cluster_configs:
-    klone-login:
+    klone:
       workdir: $SCRATCH/skypilot
-    tillicum-login:
+    tillicum:
       workdir: $SCRATCH/skypilot
       pricing:
         accelerators:
@@ -77,8 +98,8 @@ You should see this:
 🎉 Enabled infra 🎉
   Slurm [compute]
     Allowed clusters:
-    ├── klone-login
-    └── tillicum-login
+    ├── klone
+    └── tillicum
 ```
 
 ### Check remote resources
@@ -88,20 +109,20 @@ NOTE: this shows all resources but depending on groups and allocations you might
 `sky gpus list --infra slurm`
 
 ```bash
-Slurm Cluster: klone-login
+Slurm Cluster: klone
 GPU     REQUESTABLE_QTY_PER_NODE  UTILIZATION
-2080TI  1, 2, 4, 8                70 of 84 free
-A100    1, 2, 4, 8                40 of 64 free
-A40     1, 2, 4, 8                143 of 256 free
-H200    1, 2, 4, 8                62 of 64 free
-L40     1, 2, 4, 8                37 of 120 free
-L40S    1, 2, 4, 8                114 of 200 free
-P100    1, 2, 4                   8 of 8 free
-RTX6K   1, 2, 4, 8                51 of 88 free
+2080TI  1, 2, 4, 8                68 of 84 free
+A100    1, 2, 4, 8                24 of 64 free
+A40     1, 2, 4, 8                147 of 256 free
+H200    1, 2, 4, 8                44 of 64 free
+L40     1, 2, 4, 8                41 of 120 free
+L40S    1, 2, 4, 8                103 of 200 free
+P100    1, 2, 4                   6 of 8 free
+RTX6K   1, 2, 4, 8                87 of 88 free
 
-Slurm Cluster: tillicum-login
+Slurm Cluster: tillicum
 GPU   REQUESTABLE_QTY_PER_NODE  UTILIZATION
-H200  1, 2, 4, 8                67 of 192 free
+H200  1, 2, 4, 8                112 of 192 free
 ```
 
 ## Using SkyPilot
@@ -112,9 +133,12 @@ Pick a GPU type from the table above and launch a job that just prints out the G
 
 ```bash
 sky launch --gpus A40:1 -- nvidia-smi
+
+# specify a specific cluster
+sky launch --infra slurm/tillicum --gpus H200:1 -- nvidia-smi
 ```
 
-It will take several minutes to launch a compute node and run the job, but you should see output like this with different automatic names
+You will be prompted to confirm executing the job, and then you should see output similar to this:
 
 ```
 Command to run: nvidia-smi
@@ -168,15 +192,21 @@ Cluster name: sky-9f4c-scotthenderson
 └── To teardown the cluster:    sky down sky-9f4c-scotthenderson
 ```
 
-### Debuggng
+### Debugging
 
-Skypilot creates slurm scripts on the login node and runds them. They are created in `/gscratch/scrubbed/scottyh/skypilot/.sky_provision/` and named by the cluster and jobid: `sky-d85d-scotthenderson-d7836230.sh` .
+**Provisioning* logs are stored on the client computer automatically by date, for example: `cat ~/sky_logs/sky-2026-05-21-14-59-45-098750/provision.log`
+
+STDOUT and STDERR from the job itself can be streamed with `sky logs sky-9f4c-scotthenderson` while the cluster is running.
+
+But after the fact you can ssh into the login node and find copies of the actual SBATCH script (e.g`$SCRATCH/skypilot/.sky_provision/sky-9f4c-scotthenderson-d7836230.sh`) that launches the *cluster* on a compute node.
+
+And the actual job stdout/stderr is in `$SCRATCH/skypilot/.sky_clusters/` for example, since in the examples we just run 1 job we have: `.sky_clusters/sky-9b22-scotthenderson-d7836230/sky_logs/1--/run.log`
 
 ### Job submission with yaml config
 
 ```bash
-sky launch templates/tillicum-H200.yaml
-sky launch templates/klone-A40.yaml
+# sky launch templates/tillicum-h200.yaml
+sky launch templates/klone-a40.yaml
 ```
 
 ### Connect to VSCode Remote - SSH
@@ -188,8 +218,29 @@ Note the ssh command above (`ssh sky-9f4c-scotthenderson`) to connect to the hea
 
 ```bash
 # Check on jobs
-sky status
+sky status --refresh
 
 # Launch UI dashboard
 sky dashboard
+```
+
+### Launch on AWS instead of Hyak
+
+In case Hyak is offline!
+
+```
+sky launch templates/aws-vscode.yaml --cluster vscode-aws-scott
+```
+
+Then conect with `ssh vscode-aws-scott` Or connect with VSCode Remote selecting the `vscode-aws-scott` Host.
+
+Shut down with:
+```
+sky stop vscode-aws-scott
+```
+
+Restart with:
+```
+sky start vscode-aws-scott
+code --remote ssh-remote+vscode-aws-scott /home/ubuntu/sky_workdir
 ```

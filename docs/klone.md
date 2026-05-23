@@ -7,24 +7,16 @@ Onboarding: https://github.com/UWrc/klone-onboarding-cheme599a
 
 ## SSH setup
 
-Set up your `~/.ssh/config` for easy access. The following will use a ssh key (`~/.ssh/id_ed25519`) for authentication so that you don't have to use your UW netid password every time (Only set this up if you're connecting from personal computer). It also caches Duo 2FA authentication for 24 hours so you won't have to do that every time either.
+Set up your `~/.ssh/config` for easy access. The following caches Duo 2FA authentication for 24 hours so you won't have to do that every time either.
 
 ```
 Host klone-login
     HostName klone.hyak.uw.edu
     User scottyh
-    IdentityFile ~/.ssh/id_ed25519
     ForwardAgent yes
     ControlMaster auto
     ControlPath ~/.ssh/control-%r@%h:%p
     ControlPersist 24h
-```
-
-NOTE: if you don't have a key yet create one, the `-C` comment can be whatever you want, it's just a label for the key. Add a passphrase if you want more security, but I left it blank for ease of use.
-
-```bash
-ssh-keygen -t ed25519 -C "scottyh"
-ssh-copy-id -i ~/.ssh/id_ed25519.pub klone-login
 ```
 
 Now `ssh klone-login` should log you in without asking for a password, but will ask for Duo 2FA code (only once per 24 hours).

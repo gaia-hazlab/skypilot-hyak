@@ -1,0 +1,38 @@
+# Launch VM to connect to via VSCode Remote - SSH.
+# https://docs.skypilot.co/en/latest/examples/interactive-development.html#dev-vscode
+
+resources:
+  infra: slurm/tillicum
+  # Required, or else tries to launch on login node...
+  accelerators: H200:1
+
+# WARNING Job Time is a hard limit, node shuts down after this!
+config:
+  slurm:
+    sbatch_options:
+      account: gaia
+      time: "1:00:00"
+
+# Docs recommend creating a project directories with a venv to work in separate from source
+# WARNING: takes a while to install CUDA libraries!
+setup: |
+  pwd
+  PYTHON_VERSION=3.13
+  EARTH2STUDIO_VERSION=0.14.0
+
+  # Ensure we have uv
+  pip install uv
+
+  uv python install $PYTHON_VERSION
+
+  mkdir ~/earth2studio-project && cd ~/earth2studio-project
+
+  uv init --python=$PYTHON_VERSION
+  uv add "earth2studio[dlwp, da-stormcast] @ git+https://github.com/NVIDIA/earth2studio.git@$EARTH2STUDIO_VERSION"
+  uv add cartopy ipykernel
+
+  wget https://nvidia.github.io/earth2studio/_downloads/60fe3a65e136bda6c7d1f234d730e796/01_stormcast_sda.ipynb
+
+# This command doesn't really matter since we'll connect
+run: |
+  nvidia-smi

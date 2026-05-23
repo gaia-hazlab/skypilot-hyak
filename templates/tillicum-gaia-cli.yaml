@@ -1,0 +1,27 @@
+# Confirm pixi jobs can run
+resources:
+  infra: slurm/tillicum
+  accelerators: H200:1
+
+config:
+  slurm:
+    sbatch_options:
+      account: gaia
+      time: "0:15:00"
+
+# Pass with `sky launch --env SYNOPTIC_TOKEN=your_token_here -f tillicum-gaia-cli.yaml`
+envs:
+  SYNOPTIC_TOKEN: ""
+
+workdir:
+ url: https://github.com/gaia-hazlab/gaia-cli
+
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+  nvidia-smi
+
+run: |
+  pixi run skagit-synoptic

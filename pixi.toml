@@ -8,10 +8,24 @@ version = "0.1.0"
 [tasks]
 
 [dependencies]
-python = ">=3.14.2,<3.15"
+python = ">=3.14.4,<3.15"
 
 [pypi-options]
- prerelease-mode = "allow"
+prerelease-mode = "allow"
 
 [pypi-dependencies]
-skypilot = { version = ">=0.12, <0.13", extras = ["slurm","aws"] }
+skypilot = { version = ">=0.12.2rc1, <0.13", extras = ["slurm", "aws"] }
+
+[feature.test.dependencies]
+python = ">=3.14.4,<3.15"
+
+[feature.test.pypi-dependencies]
+# Upstream master (or rev = "ef5e805baa85eb168f4420622dedcad32cb545a4" )
+skypilot = { git = "https://github.com/skypilot-org/skypilot.git", extras = ["slurm", "aws"] }
+# Local
+#skypilot = { path = "/Users/scotthenderson/GitHub/skypilot", editable = true, extras = ["slurm", "aws"] }
+# Nightly build
+#skypilot-nightly = { extras = ["slurm", "aws"] }
+
+[environments]
+test = { features = ["test"], no-default-feature = true }
