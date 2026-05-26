@@ -16,7 +16,7 @@ config:
   slurm:
     sbatch_options:
       account: escience
-      time: "0:01:00"
+      time: "1:00:00"
 
 # Check resources
 setup: |
@@ -24,6 +24,11 @@ setup: |
   ls
   df -h
   free -h
+  # check if ~/.bashrc sourced correctly
+  echo $SCRATCH
+  which pixi
 
 run: |
-  echo "Hello Klone!"
+  echo $SCRATCH
+  which pixi
+  echo "Hello from skypilot on Klone!"

@@ -1,0 +1,27 @@
+# Run a docker container https://hyak.uw.edu/docs/hyak101/containers/demonstration
+resources:
+  # Available partitions: ['compute', 'ckpt', 'ckpt-all', 'ckpt-g2', 'compute-bigmem', 'compute-hugemem', 'compute-ultramem', 'cpu-g2', 'cpu-g2-mem2x', 'gpu-2080ti', 'gpu-a100', 'gpu-a40', 'gpu-h200', 'gpu-l40', 'gpu-l40s', 'gpu-p100', 'gpu-rtx6k']
+  # by default tries ordered list of partitions if unspecified - so 'compute'
+  # infra: slurm/klone/ckpt
+  # eScience partitions:
+  infra: slurm/klone/cpu-g2 # CPU=32, RAM=238G
+  memory: 8
+  cpus: 4
+
+config:
+  slurm:
+    sbatch_options:
+      account: escience
+      time: "0:05:00"
+
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+
+  export APPTAINER_CACHEDIR=/tmp
+  apptainer pull docker://python:3.9.20-slim-bullseye
+
+run: |
+  apptainer exec python_3.9.20-slim-bullseye.sif python --version

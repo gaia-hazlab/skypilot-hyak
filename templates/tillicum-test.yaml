@@ -1,0 +1,18 @@
+resources:
+  infra: slurm/tillicum
+  accelerators: H200:1
+
+config:
+  slurm:
+    sbatch_options:
+      account: gaia
+      time: "0:01:00"
+
+setup: |
+  pwd
+  ls
+  df -h
+  free -h
+
+run: |
+  nvidia-smi

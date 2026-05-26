@@ -1,4 +1,5 @@
 # Try attaching a Kopah storage bucket
+#
 resources:
   # Available partitions: ['compute', 'ckpt', 'ckpt-all', 'ckpt-g2', 'compute-bigmem', 'compute-hugemem', 'compute-ultramem', 'cpu-g2', 'cpu-g2-mem2x', 'gpu-2080ti', 'gpu-a100', 'gpu-a40', 'gpu-h200', 'gpu-l40', 'gpu-l40s', 'gpu-p100', 'gpu-rtx6k']
   # by default tries ordered list of partitions if unspecified - so 'compute'
@@ -8,6 +9,14 @@ resources:
   memory: 8
   cpus: 4
 
+# Mount an existing Kopah bucket
+# NOTE: unfortunately this approach doesn't work with kopah's custom $AWS_ENDPOINT_URL
+# Instead you can do mounts under 'setup'
+# file_mounts:
+#   /my_data:
+#     source: s3://my-bucket/  # or gs://, https://<azure_storage_account>.blob.core.windows.net/<container>, r2://, cw://, vastdata://, cos://<region>/<bucket>, oci://<bucket_name>
+#     mode: MOUNT  # MOUNT or COPY or MOUNT_CACHED. Defaults to MOUNT. Optional.
+
 config:
   slurm:
     sbatch_options:
@@ -15,11 +24,16 @@ config:
       time: "1:00:00"
 
 # Check resources
+# NOTE: aws/s3cmd/rclone require you've set credentials correctly in ~/.bashrc or similar config files in your home directory
 setup: |
   pwd
   ls
   df -h
   free -h
+  # s5cmd only on login nodes by default
+  # s5cmd ls s3://gaia/
+  s3cmd ls s3://gaia/
+  rclone ls kopah:gaia
 
 run: |
   echo "Hello Klone!"

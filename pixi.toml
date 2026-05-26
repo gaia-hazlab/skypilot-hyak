@@ -6,6 +6,10 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
+check = "sky check slurm"
+status = "sky status"
+test-klone = "sky launch templates/klone-cpu.yaml"
+test-tillicum = "sky launch templates/tillicum-test.yaml"
 
 [dependencies]
 python = ">=3.14.4,<3.15"
@@ -14,18 +18,21 @@ python = ">=3.14.4,<3.15"
 prerelease-mode = "allow"
 
 [pypi-dependencies]
-skypilot = { version = ">=0.12.2rc1, <0.13", extras = ["slurm", "aws"] }
+# Need master branch for Hyak compatibility
+#skypilot = { version = ">=0.12.2, <0.13", extras = ["slurm", "aws"] }
+skypilot = { git = "https://github.com/skypilot-org/skypilot.git", rev="ef5e805baa85eb168f4420622dedcad32cb545a4", extras = ["slurm", "aws"]}
 
-[feature.test.dependencies]
-python = ">=3.14.4,<3.15"
+# For testing
+#[feature.test.dependencies]
+#python = ">=3.14.4,<3.15"
 
-[feature.test.pypi-dependencies]
+#[feature.test.pypi-dependencies]
 # Upstream master (or rev = "ef5e805baa85eb168f4420622dedcad32cb545a4" )
-skypilot = { git = "https://github.com/skypilot-org/skypilot.git", extras = ["slurm", "aws"] }
+#skypilot = { git = "https://github.com/skypilot-org/skypilot.git", extras = ["slurm", "aws"] }
 # Local
 #skypilot = { path = "/Users/scotthenderson/GitHub/skypilot", editable = true, extras = ["slurm", "aws"] }
 # Nightly build
 #skypilot-nightly = { extras = ["slurm", "aws"] }
 
-[environments]
-test = { features = ["test"], no-default-feature = true }
+#[environments]
+#test = { features = ["test"], no-default-feature = true }

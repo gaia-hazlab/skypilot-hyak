@@ -20,6 +20,7 @@ setup: |
   ls
   df -h
   free -h
+  nvidia-smi
 
 run: |
-  nvidia-smi
+  pixi
