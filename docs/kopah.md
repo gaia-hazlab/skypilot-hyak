@@ -82,6 +82,7 @@ The following `~/.aws/config` setup is apparently necessary for compatibility wi
 
 ```
 [default]
+region = default
 endpoint_url = https://s3.kopah.uw.edu
 request_checksum_calculation = when_required
 response_checksum_validation = when_required
@@ -116,3 +117,40 @@ aws s3api put-bucket-lifecycle-configuration \
 ```
 
 test with `aws s3api get-bucket-lifecycle-configuration --bucket gaia`
+
+
+### Anonymous read access 
+
+`policy-public-read.json`
+```
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicList",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::tacolab"
+    },
+    {
+      "Sid": "PublicRead",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::tacolab/*"
+    }
+  ]
+}
+```
+
+```bash
+aws --endpoint-url https://s3.kopah.uw.edu s3api put-bucket-policy --bucket tacolab --policy file://policy-public-read.json`
+
+# add a simple text file to test
+echo 'Hello World!' > README.txt
+aws s3 cp README.txt s3://tacolab/
+
+# Confirm public read
+curl https://s3.kopah.uw.edu/tacolab/README.txt
+```
