@@ -7,19 +7,15 @@ Onboarding: https://github.com/UWrc/klone-onboarding-cheme599a
 
 ## SSH setup
 
-Set up your `~/.ssh/config` for easy access. The following caches Duo 2FA authentication for 24 hours so you won't have to do that every time either.
+From this repo, run:
 
-```
-Host klone-login
-    HostName klone.hyak.uw.edu
-    User scottyh
-    ForwardAgent yes
-    ControlMaster auto
-    ControlPath ~/.ssh/control-%r@%h:%p
-    ControlPersist 24h
+```bash
+pixi run setup-hyak --uwnetid <uwnetid>
 ```
 
-Now `ssh klone-login` should log you in without asking for a password, but will ask for Duo 2FA code (only once per 24 hours).
+This adds a `klone-login` host to your SSH config (via `~/.ssh/hyak.conf`) that caches Duo 2FA for 24 hours and shares that login with SkyPilot. See [Hyak SSH and Slurm config](../README.md#2-hyak-ssh-and-slurm-config) in the README for why this matters.
+
+Now `ssh klone-login` asks for your password and Duo once per 24 hours; later logins, and SkyPilot, reuse that connection.
 
 ## Storage Setup
 

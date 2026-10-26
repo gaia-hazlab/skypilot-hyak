@@ -10,7 +10,7 @@ config:
     sbatch_options:
       account: gaia
       qos: debug
-      time: "0:05:00"
+      time: "0:10:00"
 
 workdir:
  url: https://github.com/gaia-hazlab/earth2studio-test.git

@@ -5,22 +5,22 @@ This repo has configuration and notes for setting up compute jobs on [UW Hyak HP
 1. Sign up for the Hyak email list for maintenance and other updates:
 https://mailman22.u.washington.edu/mailman/listinfo/hyak-users
 
-**Important: As of 05/2026 Slurm clusters cannot be automatically terminated (autostop) after idle time, but you can specify sbatch_options:time for an explicit hard shutdown limit **
+**Important: As of 05/2026 Slurm clusters cannot be automatically terminated (autostop) after idle time, but you can specify `sbatch_options.time` for an explicit hard shutdown limit.**
 
 
 ## Quickstart
 
-After going through setup you can simply run
+*After going through setup* you can simply run:
 
 ```
 # Run a specific command (e.g. nvidia-smi) on a GPU node
 sky launch --infra slurm/tillicum --gpus H200:1 -- nvidia-smi
 
 # Run more elaborate jobs (python scripts) with a yaml config file
-sky launch --infra slurm/klone --gpus A40:1 templates/klone-a40.yaml
+sky launch templates/klone-a40.yaml
 
-# Run the same job on AWS instead of Hyak!
-sky launch --infra aws --gpus A40:1 templates/klone-a40.yaml
+# Run a job on AWS instead of Hyak (must have local credentials)
+AWS_PROFILE=gaia sky launch templates/aws-example.yaml
 ```
 
 **Important:** on Slurm `sky launch` spins up a compute node for a specified amount of time and either you must manually turn it off or wait until that time expires at which point the node is shut down. In contrast, skypilot is able to automatically shut down cloud resources after a specified 'idle time'.
@@ -30,7 +30,7 @@ The skypilot [YAML config/spec](https://docs.skypilot.co/en/stable/reference/yam
 
 ## Hyak Setup
 
-See [docs/klone.md](./docs/klone.md) or [docs/tillicum.md](./docs/tillicum.md) for tips on setting up your Hyak environment depending on which cluster you have access to. The filesystem is *not* shared between the two clusters, so make sure to set up your environment variables and software on the correct cluster.
+See [docs/klone.md](./docs/klone.md) or [docs/tillicum.md](./docs/tillicum.md) for notes and tips on setting up your Hyak environment depending on which cluster you have access to. The filesystem is *not* shared between the two clusters, so make sure to set up your environment variables and software on the correct cluster.
 
 ## SkyPilot Setup
 
@@ -38,43 +38,101 @@ SkyPilot offers an interface to launching jobs on Slurm clusters like Hyak. This
 
 https://docs.skypilot.co/en/latest/reference/slurm/slurm-getting-started.html#slurm-getting-started
 
-### SkyPilot slurm config
+### 1. Pixi environment
 
-We create a slurm config file (`~/.slurm/config`) that skypilot knows how to use. NOTE: not all `~/.ssh/config` are supported here, in particular skypilot handles Control itself. To avoid ssh IP bans from too many retry attempts, be sure to set the following in your `~/.ssh/config`:
+We install a single-user SkyPilot setup with [pixi](https://pixi.prefix.dev/latest/installation/). All commands below are run from this repo, either inside `pixi shell` or prefixed with `pixi run`.
 
-```
-# eliminate all public key attempts since these HPCs require MFA login!
-Host klone.hyak.uw.edu tillicum.hyak.uw.edu
-    PubkeyAuthentication no
+```bash
+pixi shell
 ```
 
-And this in your `~/.slurm/config`:
+### 2. Hyak SSH and Slurm config
+
+Run the setup script once with your UW NetID:
+
+```bash
+pixi run setup-hyak --uwnetid <uwnetid>
+```
+
+This creates two things, backing up any existing file before changing it:
+- **`~/.slurm/config`**: adds `klone` and `tillicum` entries if they're missing (existing entries are left alone)
+- **`~/.ssh/hyak.conf`**: `klone-login` / `tillicum-login` SSH aliases that share your Duo login with SkyPilot, plus an `Include ~/.ssh/hyak.conf` line at the top of `~/.ssh/config`. If you already defined `klone-login` / `tillicum-login` yourself in `~/.ssh/config`, the script warns you to delete those blocks.
+
+It is safe to rerun.
+
+#### Why: Duo MFA and failed logins
+
+Hyak requires Duo MFA on every new SSH login. SkyPilot polls the login node in the background (`squeue`, `sinfo`) and can't answer a Duo prompt, so unless it can reuse an already-authenticated connection, **every poll is a failed login, and enough failed logins get you blocked from Hyak.**
+
+SkyPilot keeps its login-node connection at a fixed path that can't be configured, `/tmp/sky_ssh_<user_hash>/<md5('__default__')[:10]>/%C` (`<user_hash>` is unique per user, from `~/.sky/user_hash`). The generated `klone-login` / `tillicum-login` aliases use that same path, so one `ssh klone-login` is reused by SkyPilot for 24 hours. The generated config also stops SkyPilot from ever attempting a login itself: with no live connection, SkyPilot's SSH fails on your laptop instead of sending a failed login to Hyak.
+
+#### `~/.slurm/config` vs `~/.ssh/config`
+
+The two files use the same syntax but do different jobs:
+
+- **`~/.slurm/config`** is read only by SkyPilot. Each `Host` entry defines a Slurm cluster, and its name is what you use in `--infra slurm/<name>` and `slurm.allowed_clusters` (here `klone` and `tillicum`). SkyPilot only reads `HostName`, `User`, `Port`, `IdentityFile`, `IdentitiesOnly`, `ProxyCommand` and `ProxyJump` from it; other SSH options (e.g. `ControlMaster`) are ignored.
+- **`~/.ssh/config`** is read by the `ssh` program itself. SkyPilot runs `ssh` to the `HostName` above (e.g. `klone.hyak.uw.edu`), so the matching `Host klone.hyak.uw.edu` block in `~/.ssh/hyak.conf` applies to those connections, while your `klone-login` alias is used when you type `ssh klone-login`.
+
+Don't add `ProxyJump klone-login` to `~/.slurm/config` to reuse your login: SkyPilot turns off its shared connection when a proxy is set, which makes every command a new login.
+
+The generated `~/.slurm/config` looks like:
 
 ```
 Host klone
     HostName klone.hyak.uw.edu
-    User scottyh
+    User <uwnetid>
     IdentitiesOnly yes
 
 Host tillicum
     HostName tillicum.hyak.uw.edu
-    User scottyh
+    User <uwnetid>
     IdentitiesOnly yes
 ```
 
-#### SkyPilot per-cluster configuration
+#### Daily workflow
 
-Note this is optional. However, by default on skypilot does not set slurm --time limits, causing jobs to fail to schedule on Hyak due to regular maintenance reservations. So we set a global limit of 1 hr below, which can be overriden in individual job configs.
+```bash
+ssh tillicum-login   # and/or: ssh klone-login -- Duo once, valid 24h (you can `exit` right away)
+sky launch ...       # SkyPilot reuses that connection, no prompts
+```
 
-This is set in `~/.sky/config.yaml` and looks like this:
+If a `sky` command fails with `Permission denied (...keyboard-interactive)`, the 24h connection expired (or you rebooted): run `ssh tillicum-login` / `ssh klone-login` again.
+
+To keep background polling to a minimum:
+- only list the clusters you are actively using in `slurm.allowed_clusters` (below)
+- `sky down <cluster>` when done: a Slurm job hitting its time limit does *not* remove the cluster from `sky status`, and SkyPilot keeps polling clusters it thinks are UP
+- `sky api stop` when you're finished for the day
+
+### 3. SkyPilot config (`~/.sky/config.yaml`)
+
+By default SkyPilot does not set a Slurm `--time` limit, which causes jobs to fail to schedule on Hyak around regular maintenance reservations. So we set a global default of 20 minutes below, which individual job YAMLs override with `config.slurm.sbatch_options.time`. Don't go much shorter: the limit includes SkyPilot installing its runtime on the node at the start of every launch, which has taken over 5 minutes on klone (the job is killed with `srun: error: Slurm job ... has expired` before your command runs). On klone, add `export UV_PYTHON_INSTALL_DIR=/tmp/uv-python-$USER` to `~/.bashrc` to avoid most of that; see [docs/remote-paths.md](docs/remote-paths.md). Per-cluster settings must go in `~/.sky/config.yaml`, not the project `.sky.yaml`:
 
 ```yaml
-# cluster_configs need to be in `~/.sky/config.yaml` not `project/.sky.yaml`
-# $SCRATCH must be set on the login node to change workdir from default of $HOME
+# SkyPilot copies local credentials for *every* cloud it knows about (AWS keys,
+# gcloud, Azure tokens, ~/.kube/config) to each new cluster, including Hyak,
+# even clouds not in allowed_clouds. NO_UPLOAD turns that off per cloud.
+# (Drop the aws entry if your AWS VMs need your local AWS keys.)
+aws:
+  remote_identity: NO_UPLOAD
+gcp:
+  remote_identity: NO_UPLOAD
+azure:
+  remote_identity: NO_UPLOAD
+kubernetes:
+  remote_identity: NO_UPLOAD
+ssh:
+  remote_identity: NO_UPLOAD
+
 slurm:
+  # Only the clusters you're using right now: SkyPilot polls every allowed cluster
+  allowed_clusters:
+    - tillicum
+    # - klone
   sbatch_options:
-    time: "0:05:00"
+    time: "0:20:00"
   cluster_configs:
+    # Keep SkyPilot's per-cluster runtime and state out of $HOME (10GB quota on klone).
+    # $SCRATCH is expanded on the login node (set by default on klone and tillicum).
     klone:
       workdir: $SCRATCH/skypilot
     tillicum:
@@ -84,58 +142,60 @@ slurm:
           H200: 0.90     # $/accelerator/hr (all-in, includes cpu/memory)
 ```
 
-### Pixi environment
+After editing it, restart the SkyPilot API server: `sky api stop && sky api start`.
 
-We install a single-user skypilot setup with [pixi](https://pixi.prefix.dev/latest/installation/):
+### 4. Check the connection
 
 ```bash
-pixi shell
+ssh tillicum-login   # MFA Login, if you haven't in the last 24h
 sky check slurm
 ```
 
-You should see this:
+You should see your allowed clusters:
 ```
 🎉 Enabled infra 🎉
   Slurm [compute]
     Allowed clusters:
-    ├── klone
     └── tillicum
 ```
 
 ### Check remote resources
 
-NOTE: this shows all resources but depending on groups and allocations you might not have access to all of them. `hyakalloc` shows what you actually have access to, but this is a good way to see all the options available on the cluster.
+NOTE: this shows all resources but depending on groups and allocations you might not have access to all of them. `hyakalloc` shows what you actually have access to, but this is a good way to see all the options available on the cluster. Only clusters in `slurm.allowed_clusters` are listed (the example below has both enabled).
 
 `sky gpus list --infra slurm`
 
 ```bash
 Slurm Cluster: klone
 GPU     REQUESTABLE_QTY_PER_NODE  UTILIZATION
-2080TI  1, 2, 4, 8                68 of 84 free
-A100    1, 2, 4, 8                24 of 64 free
-A40     1, 2, 4, 8                147 of 256 free
-H200    1, 2, 4, 8                44 of 64 free
-L40     1, 2, 4, 8                41 of 120 free
-L40S    1, 2, 4, 8                103 of 200 free
-P100    1, 2, 4                   6 of 8 free
-RTX6K   1, 2, 4, 8                87 of 88 free
-
+2080TI  1, 2, 4, 8                16 of 44 free
+A100    1, 2, 4, 8                2 of 64 free
+A40     1, 2, 4, 8                13 of 216 free
+H200    1, 2, 4, 8                1 of 64 free
+L40     1, 2, 4, 8                0 of 120 free
+L40S    1, 2, 4, 8                18 of 200 free
+P100    1, 2, 4                   0 of 8 free
+RTX6K   1, 2, 4, 8                24 of 72 free
 Slurm Cluster: tillicum
 GPU   REQUESTABLE_QTY_PER_NODE  UTILIZATION
-H200  1, 2, 4, 8                112 of 192 free
+H200  1, 2, 4, 8, 16, 32, 56    55 of 240 free
 ```
 
 ## Using SkyPilot
 
 Pick a GPU type from the table above and launch a job that just prints out the GPU information:
 
-### Test job
+### Test jobs
 
 ```bash
-sky launch --gpus A40:1 -- nvidia-smi
+# SkyPilot picks any allowed cluster with that GPU (A40 is klone only)
+sky launch --infra slurm/klone --gpus A40:1 -- nvidia-smi
 
 # specify a specific cluster
 sky launch --infra slurm/tillicum --gpus H200:1 -- nvidia-smi
+
+# CPU-only: leave out --gpus
+sky launch --infra slurm/klone --cpus 1 --memory 4 -- nproc
 ```
 
 You will be prompted to confirm executing the job, and then you should see output similar to this:
@@ -194,7 +254,9 @@ Cluster name: sky-9f4c-scotthenderson
 
 ### Debugging
 
-**Provisioning* logs are stored on the client computer automatically by date, for example: `cat ~/sky_logs/sky-2026-05-21-14-59-45-098750/provision.log`
+If a `sky` command fails with `Permission denied (...keyboard-interactive)`, your 24h Duo connection expired: run `ssh tillicum-login` / `ssh klone-login` again (see [Daily workflow](#daily-workflow)).
+
+*Provisioning* logs are stored on the client computer automatically by date, for example: `cat ~/sky_logs/sky-2026-05-21-14-59-45-098750/provision.log`
 
 STDOUT and STDERR from the job itself can be streamed with `sky logs sky-9f4c-scotthenderson` while the cluster is running.
 
@@ -204,21 +266,32 @@ And the actual job stdout/stderr is in `$SCRATCH/skypilot/.sky_clusters/` for ex
 
 ### Job submission with yaml config
 
+See [templates/](./templates/) for examples. The YAML `name:` is the *task* name; set the cluster name with `--cluster`:
+
 ```bash
-# sky launch templates/tillicum-h200.yaml
+sky launch templates/tillicum-h200.yaml
 sky launch templates/klone-a40.yaml
+sky launch templates/tillicum-cpu.yaml --cluster tillicum-cpu
 ```
+
+CPU-only jobs: leave out `accelerators`. Tillicum has no CPU partition, so these run on spare cores of `gpu-h200` nodes. SkyPilot exports `OMP_NUM_THREADS=1` for every task, so add `export OMP_NUM_THREADS=$SLURM_JOB_CPUS_PER_NODE` at the top of `run:` (as in [templates/tillicum-cpu.yaml](./templates/tillicum-cpu.yaml)) or numpy/BLAS will only use one core.
 
 ### Connect to VSCode Remote - SSH
 
-Note the ssh command above (`ssh sky-9f4c-scotthenderson`) to connect to the head node of the cluster. You can use this to connect with VSCode Remote - SSH and do interactive development on the cluster!
+Note the ssh command above (`ssh sky-9f4c-scotthenderson`) to connect to the head node of the cluster. You can use this to connect with VSCode Remote - SSH and do interactive development on the cluster! This goes through the SkyPilot API server and your shared login connection, so it needs a live `ssh klone-login` / `ssh tillicum-login` too.
 
 
 ### Common commands
 
 ```bash
-# Check on jobs
+# Check on clusters
 sky status --refresh
+sky queue <cluster>          # jobs on a cluster
+sky logs <cluster> [job-id]  # stream job output
+
+# Done? Release the node and stop background polling
+sky down <cluster>
+sky api stop
 
 # Launch UI dashboard
 sky dashboard
@@ -229,7 +302,7 @@ sky dashboard
 In case Hyak is offline!
 
 ```
-sky launch templates/aws-vscode.yaml --cluster vscode-aws-scott
+sky launch templates/aws-example.yaml --cluster vscode-aws-scott
 ```
 
 Then conect with `ssh vscode-aws-scott` Or connect with VSCode Remote selecting the `vscode-aws-scott` Host.

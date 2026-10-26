@@ -6,7 +6,7 @@ config:
   slurm:
     sbatch_options:
       account: gaia
-      time: "0:01:00"
+      time: "0:10:00"
 
 setup: |
   pwd

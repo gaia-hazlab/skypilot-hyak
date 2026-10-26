@@ -11,20 +11,19 @@ Onboarding resources: https://github.com/UWrc/tillicum-onboarding
 
 ## SSH Config:
 
-Set up your `~/.ssh/config` for easy access. The following caches Duo 2FA authentication for 24 hours so you won't have to do that every time either.
+From this repo, run:
 
-```
-Host tillicum-login
-    HostName tillicum.hyak.uw.edu
-    User scottyh
-    ForwardAgent yes
-    ControlMaster auto
-    ControlPath ~/.ssh/control-%r@%h:%p
-    ControlPersist 24h
+```bash
+pixi run setup-hyak --uwnetid <uwnetid>
 ```
 
+This adds a `tillicum-login` host to your SSH config (via `~/.ssh/hyak.conf`) that caches Duo 2FA for 24 hours and shares that login with SkyPilot. See [Hyak SSH and Slurm config](../README.md#2-hyak-ssh-and-slurm-config) in the README for why this matters.
 
-Now `ssh tillicum-login` should log you in without asking for a password, but will ask for Duo 2FA code (only once per 24 hours).
+Now `ssh tillicum-login` asks for your password and Duo once per 24 hours; later logins, and SkyPilot, reuse that connection.
+
+## CPU-only jobs
+
+Tillicum has no CPU partition, but leaving out `accelerators` gives a CPU-only job on spare cores of a `gpu-h200` node. See [templates/tillicum-cpu.yaml](../templates/tillicum-cpu.yaml). Note SkyPilot exports `OMP_NUM_THREADS=1` for every task, so set `export OMP_NUM_THREADS=$SLURM_JOB_CPUS_PER_NODE` at the top of `run:` or numpy/BLAS/`nproc` will only use one core.
 
 
 ## Storage Setup
