@@ -6,6 +6,7 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
+setup-hyak = "python scripts/setup-hyak.py"
 check = "sky check slurm"
 status = "sky status"
 test-klone = "sky launch templates/klone-cpu.yaml"
@@ -13,14 +14,19 @@ test-tillicum = "sky launch templates/tillicum-test.yaml"
 
 [dependencies]
 python = ">=3.14.4,<3.15"
-
-[pypi-options]
-prerelease-mode = "allow"
+# problem w/ conda-forge build https://github.com/skypilot-org/skypilot/issues/11203
+#skypilot = ">=0.8.1,<0.9"
 
 [pypi-dependencies]
+skypilot = { version = ">=0.14, <0.15", extras = ["slurm", "aws"] }
+
+# TESTING bleeding edge SLURM stuff:
+
+#[pypi-options]
+#prerelease-mode = "allow"
+# [pypi-dependencies]
 # Need master branch for Hyak compatibility
-#skypilot = { version = ">=0.12.2, <0.13", extras = ["slurm", "aws"] }
-skypilot = { git = "https://github.com/skypilot-org/skypilot.git", rev="ef5e805baa85eb168f4420622dedcad32cb545a4", extras = ["slurm", "aws"]}
+#skypilot = { git = "https://github.com/skypilot-org/skypilot.git", rev="ef5e805baa85eb168f4420622dedcad32cb545a4", extras = ["slurm", "aws"]}
 
 # For testing
 #[feature.test.dependencies]

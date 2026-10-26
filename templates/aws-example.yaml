@@ -45,7 +45,7 @@ setup: |
   pixi --version
 
   # Copy from public bucket
-  aws --no-sign-request s3 sync s3://cresst/scratch/scott/ /tmp/datasets/cresst
+  aws --no-sign-request s3 sync s3://gaia/scratch/public/ /tmp/datasets/gaia
 
   # Automatically set certain environment variables for remote shells
   echo 'export GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"' >> ~/.bashrc

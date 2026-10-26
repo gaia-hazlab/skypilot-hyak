@@ -1,0 +1,32 @@
+# CPU-only job on Tillicum: omit `accelerators` and SkyPilot submits without --gres=gpu
+# Tillicum has no CPU partition, so this runs on spare cores of a gpu-h200 node
+# to launch with a specific cluster name: sky launch templates/tillicum-cpu.yaml --cluster tillicum-cpu
+resources:
+  infra: slurm/tillicum
+  cpus: 4
+  memory: 16
+
+# qos: debug has a max runtime of 1hr, but higher priority than normal
+# https://hyak.uw.edu/docs/tillicum/scheduling-jobs#tillicum-qos
+config:
+  slurm:
+    sbatch_options:
+      account: gaia
+      qos: debug
+      time: "0:10:00"
+
+setup: |
+  pwd
+  df -h
+  free -h
+
+run: |
+  # SkyPilot exports OMP_NUM_THREADS=1, which makes nproc/numpy/BLAS use a single core
+  export OMP_NUM_THREADS=$SLURM_JOB_CPUS_PER_NODE
+  # Compare requested cpus with what the job can actually use
+  echo "nproc: $(nproc)"
+  python3 -c "import os; print('sched_getaffinity:', len(os.sched_getaffinity(0)))"
+  env | grep -E "^SLURM_(JOB_ID|CPUS|JOB_CPUS|MEM|NODELIST)" | sort
+  # Keep the job alive so it can be inspected from the login node (squeue / sstat / scontrol)
+  # Comment out the following line to keep the job running (for monitoring from login node)
+  # sleep 300

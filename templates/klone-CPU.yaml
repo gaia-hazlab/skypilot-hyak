@@ -1,3 +1,6 @@
+# NOTE: task name not cluster name
+# to launch with a specific cluster name: sky launch templates/klone-cpu.yaml --cluster klone-cpu
+#name: klone-cpu
 resources:
   # Available partitions: ['compute', 'ckpt', 'ckpt-all', 'ckpt-g2', 'compute-bigmem', 'compute-hugemem', 'compute-ultramem', 'cpu-g2', 'cpu-g2-mem2x', 'gpu-2080ti', 'gpu-a100', 'gpu-a40', 'gpu-h200', 'gpu-l40', 'gpu-l40s', 'gpu-p100', 'gpu-rtx6k']
   # by default tries ordered list of partitions if unspecified - so 'compute'
@@ -25,6 +28,7 @@ setup: |
   df -h
   free -h
   # check if ~/.bashrc sourced correctly
+  echo $UV_DATA_DIR
   echo $SCRATCH
   which pixi
 
