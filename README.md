@@ -34,9 +34,14 @@ See [docs/klone.md](./docs/klone.md) or [docs/tillicum.md](./docs/tillicum.md) f
 
 ## SkyPilot Setup
 
-SkyPilot offers an interface to launching jobs on Slurm clusters like Hyak. This allows you to run the same code on your laptop and on the cluster without having to worry about the differences in environment or job submission. See the official SkyPilot Slurm docs for more details:
+SkyPilot offers an interface to launching jobs on Slurm clusters like Hyak. This allows you to run the same code on your laptop and on the cluster without having to worry about the differences in environment or job submission. See the official [SkyPilot Slurm docs](https://docs.skypilot.co/en/latest/reference/slurm/slurm-getting-started.html#slurm-getting-started) for more details.
 
-https://docs.skypilot.co/en/latest/reference/slurm/slurm-getting-started.html#slurm-getting-started
+### 0. Clone this repo
+
+```bash
+gh repo clone gaia-hazlab/skypilot-hyak
+```
+
 
 ### 1. Pixi environment
 
@@ -56,11 +61,12 @@ pixi run setup-hyak --uwnetid <uwnetid>
 
 This creates two things, backing up any existing file before changing it:
 - **`~/.slurm/config`**: adds `klone` and `tillicum` entries if they're missing (existing entries are left alone)
-- **`~/.ssh/hyak.conf`**: `klone-login` / `tillicum-login` SSH aliases that share your Duo login with SkyPilot, plus an `Include ~/.ssh/hyak.conf` line at the top of `~/.ssh/config`. If you already defined `klone-login` / `tillicum-login` yourself in `~/.ssh/config`, the script warns you to delete those blocks.
+- **`~/.ssh/hyak.conf`**: `klone-login` / `tillicum-login` SSH aliases that share your Duo login with SkyPilot, plus an `Include ~/.ssh/hyak.conf` line at the top of `~/.ssh/config`. If you already defined `klone-login` / `tillicum-login` yourself in `~/.ssh/config`, the script warns you to delete those blocks. It is safe to rerun.
 
-It is safe to rerun.
+<details>
+<summary><b>what the script does</b></summary>
 
-#### Why: Duo MFA and failed logins
+### Why: Duo MFA and failed logins
 
 Hyak requires Duo MFA on every new SSH login. SkyPilot polls the login node in the background (`squeue`, `sinfo`) and can't answer a Duo prompt, so unless it can reuse an already-authenticated connection, **every poll is a failed login, and enough failed logins get you blocked from Hyak.**
 
@@ -88,6 +94,8 @@ Host tillicum
     User <uwnetid>
     IdentitiesOnly yes
 ```
+
+</details>
 
 #### Daily workflow
 
