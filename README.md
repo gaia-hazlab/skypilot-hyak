@@ -99,9 +99,14 @@ Host tillicum
 
 #### Daily workflow
 
+1. ssh into HPC with MFA which caches connection for 24 hours (you can `exit` right away)
 ```bash
-ssh tillicum-login   # and/or: ssh klone-login -- Duo once, valid 24h (you can `exit` right away)
-sky launch ...       # SkyPilot reuses that connection, no prompts
+ssh tillicum-login   # and/or: klone-login
+```
+
+2. run `sky` commands from your laptop:
+```bash
+sky check slurm
 ```
 
 If a `sky` command fails with `Permission denied (...keyboard-interactive)`, the 24h connection expired (or you rebooted): run `ssh tillicum-login` / `ssh klone-login` again.
