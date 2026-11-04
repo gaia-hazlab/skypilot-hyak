@@ -315,3 +315,56 @@ aws s3 cp collection.json s3://gaia/public/prism/ --content-type application/jso
 ```
 
 To remove CORS again: `aws s3api delete-bucket-cors --bucket gaia --profile kopah`.
+
+## Public scratch bucket (`gaia-scratch`)
+
+`s3://gaia-scratch` (created 2026-11-02) is a separate bucket that is **entirely public**. Anyone can
+read and list every key, and CORS is enabled for browser clients. Use it for things you want to share
+quickly without editing the `gaia` bucket policy. Don't put anything private in it.
+
+### Creating a bucket with the AWS CLI
+
+`aws s3 mb s3://<bucket>` fails against Kopah with:
+
+```
+make_bucket failed: s3://gaia-scratch An error occurred (InvalidLocationConstraint) when calling the CreateBucket operation: The specified location-constraint is not valid
+```
+
+The `kopah` profile has no region, so the CLI sends a location constraint Ceph RGW doesn't recognize.
+Kopah's only zonegroup is `default` (`aws s3api get-bucket-location --bucket gaia` returns
+`"LocationConstraint": "default"`), so pass it explicitly:
+
+```
+aws s3api create-bucket --bucket gaia-scratch --profile kopah \
+  --create-bucket-configuration LocationConstraint=default
+```
+
+(`s5cmd mb` works without this.)
+
+### Policy and CORS
+
+The bucket policy is [`gaia-scratch-policy.json`](gaia-scratch-policy.json): `s3:GetObject` on
+`gaia-scratch/*` and `s3:ListBucket` on the bucket, both for `"Principal": "*"`. CORS reuses
+[`gaia-cors.json`](gaia-cors.json).
+
+```
+aws s3api put-bucket-policy --bucket gaia-scratch --profile kopah \
+  --policy file://docs/gaia-scratch-policy.json
+
+aws s3api put-bucket-cors --bucket gaia-scratch --profile kopah \
+  --cors-configuration file://docs/gaia-cors.json
+```
+
+### Verify
+
+```
+# 200, no credentials
+curl https://s3.kopah.uw.edu/gaia-scratch/README.txt
+
+# 200, XML listing of the whole bucket
+curl "https://s3.kopah.uw.edu/gaia-scratch?list-type=2"
+
+# Access-Control-Allow-Origin: *
+curl -sI -H "Origin: https://example.com" \
+  https://s3.kopah.uw.edu/gaia-scratch/README.txt | grep -i access-control
+```

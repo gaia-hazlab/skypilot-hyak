@@ -58,18 +58,64 @@ From [scripts/check-download-speed.py](../scripts/check-download-speed.py): down
 
 On klone the first file in `/gscratch/scrubbed` took 12.6 s to create, so this is metadata/file-creation latency, not bandwidth.
 
+## Measurements (2026-10-27, `curl | tar`)
+
+With the `srun` one-liners below: stream the same tarball into `tar xz` in each directory (120 s cap). A full extraction is 5,122 entries (files + dirs).
+
+**klone** (`ckpt`), two runs: job 42474684 (node not recorded) and job 42475585 (n3287, 11:10 PDT):
+
+| Directory | Run 1 | Run 2 |
+|---|---|---|
+| `/tmp` | 5122 in 1.5 s (~3500/s) | 5122 in 1.4 s (~3600/s) |
+| `/mmfs1/home/scottyh` | 1786 in 120 s, timeout (15/s) | 1117 in 120 s, timeout (9/s) |
+| `/gscratch/scrubbed/scottyh` | 5122 in 10.7 s (~480/s) | 5122 in 7.3 s (~700/s) |
+
+**tillicum** (g006, debug QoS, job 392228, 11:06 PDT):
+
+| Directory | Entries | Time | Entries/s |
+|---|---|---|---|
+| `/tmp` | 5122/5122 | 0.9 s | ~5600 |
+| `/gpfs/home/scottyh` | 5122/5122 | 2.2 s | ~2300 |
+| `/gpfs/scrubbed/scottyh` | 5122/5122 | 2.5 s | ~2100 |
+
+On klone, `/mmfs1/home` is consistently very slow (33 → 15 → 9 files/s across three runs on different nodes), while `/gscratch/scrubbed` swung from 2 files/s on 10-26 to ~480–700/s on 10-27. Even at its best, klone scrubbed is ~3× slower than tillicum's GPFS. Tillicum is consistently fast.
+
+What we've ruled out or noticed (from `hyakstorage` and `df -h` on the klone login node, 2026-10-27):
+
+- **Not quota:** home is at 1 GB / 10 GB and 4,732 / 256,000 files, so creates shouldn't be waiting on the GPFS quota manager.
+- **Separate filesets:** `df -h /gscratch/scrubbed/$USER` reports its own 150T size, while `df -h $HOME` reports the whole 2.7P `/mmfs1`. So home and scrubbed can have different metadata/pool settings even though both are on `/mmfs1`.
+- **Scrubbed fullness may matter:** scrubbed was 98% full (3.2 TiB free) when it ran at 2 files/s on 10-26, and 93% full (11 TiB free) when it ran at ~480–700/s on 10-27. GPFS block allocation slows down on nearly full pools, but two data points are only a correlation.
+- **Home is unexplained:** the likely causes (fileset metadata config, snapshots, storage pool, shared small-file load) are only visible to UW-IT (`mmlsfileset` etc.).
+
 ## Reproducing (for UWIT)
 
-Copy [scripts/check-download-speed.py](../scripts/check-download-speed.py) to your home directory (standard library only, Python 3.6+) and run on a compute node:
+No script needed; run on a compute node:
 
 ```bash
 # klone
-srun -A escience -p ckpt -t 0:15:00 -c 1 --mem 4G -u python3 ~/check-download-speed.py
+srun -A escience -p ckpt -t 0:15:00 -c 1 --mem 4G bash -c '
+hostname; date
+URL=https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.10.22%2B20261009-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+for d in /tmp/$USER $HOME /gscratch/scrubbed/$USER; do
+  mkdir -p $d/tartest && cd $d/tartest
+  echo "== $d"; time (curl -sL $URL | timeout 120 tar xz)
+  echo "entries: $(find . | wc -l) of 5122"
+  cd / && rm -rf $d/tartest
+done'
+
 # tillicum
-srun -A gaia -q debug -p gpu-h200 -t 0:15:00 -c 1 --mem 4G -u python3 ~/check-download-speed.py
+srun -q debug -t 0:15:00 -c 1 --mem 4G bash -c '
+hostname; date
+URL=https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.10.22%2B20261009-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+for d in /tmp/$USER $HOME /gpfs/scrubbed/$USER; do
+  mkdir -p $d/tartest && cd $d/tartest
+  echo "== $d"; time (curl -sL $URL | timeout 120 tar xz)
+  echo "entries: $(find . | wc -l) of 5122"
+  cd / && rm -rf $d/tartest
+done'
 ```
 
-It tests `/tmp`, `$HOME` and the scrubbed scratch dir by default (`--dirs` to override, `--max-seconds` to cap each directory) and ends with a summary table. Running it on a login node too would show whether the slowness is specific to compute nodes.
+For more detail (per-directory progress, large-file write time, a summary table), copy [scripts/check-download-speed.py](../scripts/check-download-speed.py) to your home directory (standard library only, Python 3.6+) and run e.g. `srun -A escience -p ckpt -t 0:15:00 -c 1 --mem 4G -u python3 ~/check-download-speed.py`. It tests `/tmp`, `$HOME` and the scrubbed scratch dir by default (`--dirs` to override, `--max-seconds` to cap each directory). Running it on a login node too would show whether the slowness is specific to compute nodes.
 
 Check free space on a node's `/tmp`: `srun ... df -h /tmp`.
 
