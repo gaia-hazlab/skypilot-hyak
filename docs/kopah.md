@@ -320,7 +320,8 @@ To remove CORS again: `aws s3api delete-bucket-cors --bucket gaia --profile kopa
 
 `s3://gaia-scratch` (created 2026-11-02) is a separate bucket that is **entirely public**. Anyone can
 read and list every key, and CORS is enabled for browser clients. Use it for things you want to share
-quickly without editing the `gaia` bucket policy. Don't put anything private in it.
+quickly without editing the `gaia` bucket policy. Don't put anything private in it, and expect
+objects to be deleted after 30 days (see [Lifecycle](#lifecycle)).
 
 ### Creating a bucket with the AWS CLI
 
@@ -353,6 +354,28 @@ aws s3api put-bucket-policy --bucket gaia-scratch --profile kopah \
 
 aws s3api put-bucket-cors --bucket gaia-scratch --profile kopah \
   --cors-configuration file://docs/gaia-cors.json
+```
+
+### Lifecycle
+
+Every object in `gaia-scratch` is deleted 30 days after upload (the bucket is not versioned, so
+this is a real delete). Incomplete multipart uploads are aborted after 7 days.
+
+```
+aws s3api put-bucket-lifecycle-configuration --bucket gaia-scratch --profile kopah \
+  --lifecycle-configuration '{
+    "Rules": [
+      {
+        "ID": "expire-30d",
+        "Status": "Enabled",
+        "Filter": {"Prefix": ""},
+        "Expiration": {"Days": 30},
+        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}
+      }
+    ]
+  }'
+
+aws s3api get-bucket-lifecycle-configuration --bucket gaia-scratch --profile kopah
 ```
 
 ### Verify
