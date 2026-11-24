@@ -258,16 +258,25 @@ test with `aws s3api get-bucket-lifecycle-configuration --bucket gaia`
 
 ### Anonymous read access
 
+A bucket policy with `"Principal": "*"` makes objects readable without credentials. The whole
+`gaia-scratch` bucket is public this way, using [`gaia-scratch-policy.json`](gaia-scratch-policy.json).
+`gaia` itself stays private, and only some of its prefixes are public (see
+[Public prefixes](#public-prefixes-bucket-policy)).
+
 ```bash
-aws --endpoint-url https://s3.kopah.uw.edu s3api put-bucket-policy --bucket tacolab --policy file://policy-public-read.json`
+aws s3api put-bucket-policy --bucket gaia-scratch --profile kopah \
+  --policy file://docs/gaia-scratch-policy.json
 
 # add a simple text file to test
 echo 'Hello World!' > README.txt
-aws s3 cp README.txt s3://tacolab/
+aws s3 cp README.txt s3://gaia-scratch/ --profile kopah
 
 # Confirm public read
-curl https://s3.kopah.uw.edu/tacolab/README.txt
+curl https://s3.kopah.uw.edu/gaia-scratch/README.txt
 ```
+
+The [Public scratch bucket](#public-scratch-bucket-gaia-scratch) section below covers its CORS and
+lifecycle settings.
 ## Public prefixes (bucket policy)
 
 Kopah is [Ceph RGW](https://docs.ceph.com/en/latest/radosgw/bucketpolicy/), which supports S3 bucket
