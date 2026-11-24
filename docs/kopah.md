@@ -72,6 +72,20 @@ acl = private
 
 test with `rclone ls kopah:gaia`
 
+## Tracking usage (1 TiB quota)
+
+Our account has a hard quota of 1 TiB across all buckets.
+[`scripts/kopah-usage.py`](../scripts/kopah-usage.py) prints usage per bucket and first-level
+prefix, plus quota remaining, using Kopah's own metered numbers. It only needs `pixi`:
+
+```bash
+pixi run --script scripts/kopah-usage.py              # buckets + prefixes (~1 min)
+pixi run --script scripts/kopah-usage.py -- --quick   # totals only (~1 s)
+```
+
+Incomplete multipart uploads count against the quota but don't show up in `rclone size` or
+`aws s3 ls`; the script lists them in their own row.
+
 ## Copying data in from AWS S3 or Azure Blob (rclone)
 
 `rclone copy` streams straight from the other cloud into Kopah. The bytes pass through the machine running rclone, but nothing is written to its disk, so you don't need scratch space. Both procedures below were tested in November 2026, rclone v1.73.2 (the version on klone), and reached about 77 MiB/s from a klone compute node.
