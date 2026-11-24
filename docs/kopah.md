@@ -72,6 +72,109 @@ acl = private
 
 test with `rclone ls kopah:gaia`
 
+## Copying data in from AWS S3 or Azure Blob (rclone)
+
+`rclone copy` streams straight from the other cloud into Kopah. The bytes pass through the machine running rclone, but nothing is written to its disk, so you don't need scratch space. Both procedures below were tested in November 2026, rclone v1.73.2 (the version on klone), and reached about 77 MiB/s from a klone compute node.
+
+### 1. Run it on a klone compute node inside tmux
+
+Don't run a multi-hour copy over home wifi or on a login node.
+
+```bash
+ssh <netid>@klone-login01.hyak.uw.edu     # note which login node; tmux sessions live only on that one
+hyakalloc                                  # check free capacity for your account
+tmux new -s backup
+salloc -A <account> -p cpu-g2 -c 4 --mem=16G --time=8:00:00    # or -p ckpt if cpu-g2 is full
+```
+
+Detach with `Ctrl-b d`. To come back, ssh to the **same** login node and run `tmux attach -t backup`. Environment variables you set (credentials below) exist only in the shell where you set them. Set them again after a new `salloc` or in a new tmux window.
+
+### 2a. Source: AWS S3
+
+Add an `aws` remote next to `kopah` in `~/.config/rclone/rclone.conf`:
+
+```ini
+[aws]
+type = s3
+provider = AWS
+region = us-west-2
+```
+
+If your AWS profile assumes a role **with MFA**, rclone can't prompt for the code (`assume role with MFA enabled, but AssumeRoleTokenProvider session option not set`). Let the AWS CLI prompt, then hand the temporary credentials **only to the `aws` remote** by renaming the variables. Plain `AWS_*` variables would also override the `kopah` remote's credentials.
+
+```bash
+unset AWS_PROFILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+eval "$(aws configure export-credentials --profile <aws-profile> --format env | sed 's/export AWS_/export RCLONE_CONFIG_AWS_/')"
+export RCLONE_CONFIG_AWS_ENV_AUTH=false
+echo $RCLONE_CONFIG_AWS_CREDENTIAL_EXPIRATION   # re-run the eval line after this time
+
+rclone lsd aws:<bucket>
+SRC=aws:<bucket>/<prefix>
+```
+
+If the copy dies with `ExpiredToken`, re-run the `eval` line and then the same `rclone copy`; files already copied are skipped. `rclone copy` copies only current object versions, so check `aws s3api get-bucket-versioning` before deleting a source bucket.
+
+### 2b. Source: Azure Blob
+
+Don't put the storage account key on klone. On your laptop, generate a short-lived, **read+list-only**, HTTPS-only SAS limited to one container:
+
+```bash
+# laptop (macOS date syntax); needs an az login that can list the account keys
+EXP=$(date -u -v+3d +%Y-%m-%dT%H:%MZ)
+KEY=$(az storage account keys list -g <resource-group> -n <account> --query "[0].value" -o tsv)
+SAS=$(az storage container generate-sas --account-name <account> --account-key "$KEY" \
+      -n <container> --permissions rl --expiry $EXP --https-only -o tsv)
+unset KEY
+[ -n "$SAS" ] && echo "https://<account>.blob.core.windows.net/<container>?$SAS"
+```
+
+On klone, paste it into an environment variable. rclone's on-the-fly `:azureblob:` remote reads it, so nothing goes into `rclone.conf`:
+
+```bash
+read -rs RCLONE_AZUREBLOB_SAS_URL      # paste the URL, press Enter. -s: not echoed. Not saved to shell history.
+export RCLONE_AZUREBLOB_SAS_URL        # read only sets a shell variable; export passes it to rclone
+[ -n "$RCLONE_AZUREBLOB_SAS_URL" ] && echo set
+
+rclone lsd :azureblob:<container>
+SRC=:azureblob:<container>/<prefix>
+```
+
+To revoke the SAS early, rotate the storage key it was signed with (`az storage account keys renew ... --key primary`).
+
+### 3. Copy and verify
+
+```bash
+DST=kopah:gaia/<prefix>
+rclone size $SRC                     # check size first: egress is ~$0.09/GB on AWS, ~$0.087/GB on Azure
+
+rclone copy $SRC $DST \
+  --transfers 16 --checkers 32 --s3-chunk-size 64M \
+  --s3-no-check-bucket --s3-storage-class STANDARD \
+  --low-level-retries 20 --retries 5 \
+  --progress --log-file ~/rclone-copy.log --log-level INFO
+
+rclone check $SRC $DST --one-way --s3-no-check-bucket    # prints only differences
+unset RCLONE_AZUREBLOB_SAS_URL       # when finished
+```
+
+- `rclone copy src/dir dst/dir` copies the *contents* of `dir`. Keep the folder name on the destination too, or the files land loose in the parent.
+- To copy one folder at a time, run it per folder. Add `--max-depth 1` to copy only the top-level files.
+- `--s3-no-check-bucket` stops rclone from trying to create `gaia`, which already exists.
+- To check errors: `grep -E "ERROR|NOTICE" ~/rclone-copy.log | head`.
+
+### Gotcha: Azure → Kopah needs `--s3-storage-class STANDARD`
+
+Without it, every upload from Azure fails, even though Azure→local and local→Kopah copies work fine:
+
+```
+ERROR : file.tif: Failed to copy: operation error S3: PutObject, exceeded maximum number of attempts, 1,
+https response error StatusCode: 502 ... error while deserializing xml error response : XML syntax error on line 11: element <hr> closed by </body>
+```
+
+Transfers sit at 0% until the Kopah gateway times out with a 500/502 HTML page. With `--s3-upload-cutoff 0`, the multipart init fails instead with `400 InvalidArgument: UnknownError`. The cause: rclone carries the Azure blob's access tier (`Hot`) over as the S3 storage class, and Ceph RGW rejects it. `--s3-storage-class STANDARD` overrides it. `--s3-use-unsigned-payload` and `--s3-use-data-integrity-protections false` don't help. The flag is harmless for AWS sources, so just always pass it.
+
+Remember that anything copied under `gaia/public/` is readable by anyone (see [Public prefixes](#public-prefixes-bucket-policy)).
+
 
 ## Lifecycle policies
 
