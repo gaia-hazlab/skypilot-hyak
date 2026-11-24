@@ -4,6 +4,8 @@ UW Hyak now provides a managed object store called Kopah
 
 https://hyak.uw.edu/docs/storage/kopah
 
+Kopah was announced as a preview in [August 2024](https://hyak.uw.edu/blog/2024-august-maintenance), with test users invited ahead of a September rollout. The [overview](https://hyak.uw.edu/docs/systems/kopah/overview) says the service started in Fall 2024. Globus support followed in Spring 2025.
+
 https://github.com/maouw/kopah-uw-s3api-test
 
 You must apply for a trial account or pay-as-you go storage. Here's a current price comparison for blob storage options (as of 05/2026):
@@ -230,25 +232,20 @@ aws s3 cp README.txt s3://gaia/README.txt
 
 #### Add a lifecycle policy for scratch data (delete after 30 days, or 1 day for more temporary data)
 
+The live rules for `gaia` are tracked as [`gaia-lifecycle.json`](gaia-lifecycle.json):
+
+- `scratch-1d`: objects under `scratch-1d/` are deleted after 1 day
+- `scratch-30d`: objects under `scratch/` are deleted after 30 days
+- `abort-incomplete-uploads-7d`: incomplete multipart uploads anywhere in the bucket are aborted
+  after 7 days. They count against the quota but are invisible to `ls` (see
+  [Tracking usage](#tracking-usage-1-tib-quota)).
+
+Like bucket policies, `put-bucket-lifecycle-configuration` **replaces** the whole configuration, so
+edit the file and apply all of it:
+
 ```
-aws s3api put-bucket-lifecycle-configuration \
-  --bucket gaia \
-  --lifecycle-configuration '{
-    "Rules": [
-      {
-        "ID": "scratch-30d",
-        "Status": "Enabled",
-        "Filter": {"Prefix": "scratch/"},
-        "Expiration": {"Days": 30}
-      },
-      {
-        "ID": "scratch-1d",
-        "Status": "Enabled",
-        "Filter": {"Prefix": "scratch-1d/"},
-        "Expiration": {"Days": 1}
-      }
-    ]
-  }'
+aws s3api put-bucket-lifecycle-configuration --bucket gaia --profile kopah \
+  --lifecycle-configuration file://docs/gaia-lifecycle.json
 ```
 
 Put a file under that prefix and it should be gone a day later!
@@ -284,9 +281,6 @@ someone else's public prefix:
 ```
 aws s3api get-bucket-policy --bucket gaia --query Policy --output text > gaia-policy.json
 ```
-
-The policy as it stood before `public/` was added is kept here as
-[`gaia-policy.backup.json`](gaia-policy.backup.json), in case you need to roll back.
 
 Two statements per public prefix: `s3:GetObject` on the objects, and (optionally) `s3:ListBucket` on
 the *bucket* with an `s3:prefix` condition so anonymous users can enumerate what's there.
@@ -508,3 +502,65 @@ curl "https://s3.kopah.uw.edu/gaia-scratch?list-type=2"
 curl -sI -H "Origin: https://example.com" \
   https://s3.kopah.uw.edu/gaia-scratch/README.txt | grep -i access-control
 ```
+
+## Temporary access (presigned URLs)
+
+To give someone time-limited access to a private object without sharing keys, use a presigned URL.
+This is the S3 equivalent of an Azure SAS URL. The URL is signed locally with your Kopah key, and
+Kopah checks the signature and the expiry. Tested on 2026-11-24:
+
+| What | Result on Kopah |
+|---|---|
+| Presigned GET of a private object | Works. 200 with the URL, 403 without it, 403 if the signature is altered |
+| Longest expiry | **7 days** (604800 s, the SigV4 limit). An 8-day URL is rejected with `AccessDenied` |
+| Presigned PUT (upload) | Works, but only for the one key it was signed for. The same URL for another key gets 403 |
+| STS (`GetSessionToken`, `AssumeRole`) | `AccessDenied`: no temporary scoped credentials |
+| IAM (`ListRoles`, `ListUsers`) | `AccessDenied` |
+
+### Download link
+
+```bash
+aws s3 presign s3://gaia/path/to/file.tif --expires-in 86400 --profile kopah   # 1 day; max 604800
+```
+
+Range requests work on the presigned URL, so GDAL can stream a private COG over `/vsicurl/` without
+downloading it. Quote the URL in the shell, because it contains `&`.
+
+### Upload link
+
+`aws s3 presign` only makes GET URLs. For a PUT URL, use boto3:
+
+```python
+# uv run --with boto3 python presign_put.py
+import boto3
+
+s3 = boto3.Session(profile_name="kopah").client(
+    "s3", endpoint_url="https://s3.kopah.uw.edu", region_name="default"
+)
+url = s3.generate_presigned_url(
+    "put_object", Params={"Bucket": "gaia", "Key": "incoming/data.nc"}, ExpiresIn=3600
+)
+print(url)
+```
+
+The recipient uploads with no credentials:
+
+```bash
+curl -X PUT --upload-file data.nc "$URL"
+```
+
+If you pass `ContentType` in `Params`, the uploader must send exactly that `Content-Type` header, or the
+signature won't match.
+
+### Limits
+
+- **Write access is per object, not per prefix.** STS is not available to Kopah tenants, so there is
+  no time-limited, prefix-scoped key like an Azure container SAS or AWS STS credentials. To accept
+  many files, sign one PUT URL per key. A presigned POST policy with a `starts-with $key` condition
+  should allow a whole prefix (Ceph RGW supports POST policies), but it hasn't been tested on Kopah.
+- **No early revocation.** A URL stays valid until it expires, unless the key that signed it is
+  rotated, which likely needs UW IT. Use short expiries.
+- **The URL can do whatever the signing key can do, for that one request.** Anyone who has the URL
+  can use it until it expires, so treat it as a secret.
+- For finer control, such as a separate key limited to one prefix, ask UW IT about enabling STS or
+  creating a subuser.

@@ -1,0 +1,22 @@
+{
+  "Rules": [
+    {
+      "ID": "scratch-1d",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "scratch-1d/"},
+      "Expiration": {"Days": 1}
+    },
+    {
+      "ID": "scratch-30d",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "scratch/"},
+      "Expiration": {"Days": 30}
+    },
+    {
+      "ID": "abort-incomplete-uploads-7d",
+      "Status": "Enabled",
+      "Filter": {"Prefix": ""},
+      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicRead_bkerns",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::gaia/bkerns/public/*"
+    },
+    {
+      "Sid": "PublicListPrefix_bkerns",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::gaia",
+      "Condition": {"StringLike": {"s3:prefix": ["bkerns/public/*"]}}
+    },
+    {
+      "Sid": "PublicRead",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::gaia/public/*"
+    },
+    {
+      "Sid": "PublicListPrefix",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::gaia",
+      "Condition": {"StringLike": {"s3:prefix": ["public/*"]}}
+    },
+    {
+      "Sid": "PublicRead_scratch",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::gaia/scratch/public/*"
+    },
+    {
+      "Sid": "PublicListPrefix_scratch",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::gaia",
+      "Condition": {"StringLike": {"s3:prefix": ["scratch/public/*"]}}
+    }
+  ]
+}
