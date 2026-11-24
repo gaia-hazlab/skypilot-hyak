@@ -41,14 +41,15 @@ DEFAULT_ENDPOINT = "https://s3.kopah.uw.edu"
 console = Console(stderr=True)
 
 
-def make_session(profile: str) -> tuple[boto3.Session, str]:
-    """Return a boto3 session and the S3 endpoint URL."""
+def make_session(profile: str) -> tuple[boto3.Session, str, str]:
+    """Return a boto3 session, the S3 endpoint URL, and where the credentials came from."""
     if profile in boto3.Session().available_profiles:
         session = boto3.Session(profile_name=profile)
         endpoint = session._session.get_scoped_config().get("endpoint_url", DEFAULT_ENDPOINT)
-        return session, endpoint
+        return session, endpoint, f"profile {profile}"
     if os.environ.get("AWS_ACCESS_KEY_ID"):
-        return boto3.Session(), os.environ.get("S3_ENDPOINT_URL", DEFAULT_ENDPOINT)
+        endpoint = os.environ.get("S3_ENDPOINT_URL", DEFAULT_ENDPOINT)
+        return boto3.Session(), endpoint, "AWS_ACCESS_KEY_ID"
     sys.exit(f"No credentials: no AWS profile {profile!r} and no AWS_ACCESS_KEY_ID")
 
 
@@ -92,6 +93,11 @@ class Kopah:
                 for e in root.iterfind("CapacityUsed/User/Buckets/Entry")
             },
         }
+
+    def account(self) -> str | None:
+        """Kopah account name (the bucket owner), e.g. 'gaia'."""
+        owner = self.s3.list_buckets().get("Owner", {})
+        return owner.get("DisplayName") or owner.get("ID")
 
     def object_count(self, bucket: str) -> int:
         headers, _ = self._rgw("HEAD", f"/{bucket}?read-stats=true")
@@ -156,23 +162,30 @@ def main():
     )
     args = ap.parse_args()
 
-    k = Kopah(*make_session(args.profile))
+    session, endpoint, cred_source = make_session(args.profile)
+    k = Kopah(session, endpoint)
     with console.status("Fetching usage..."):
         u = k.usage()
+        account = k.account()
         with ThreadPoolExecutor(8) as pool:
             counts = dict(zip(u["buckets"], pool.map(k.object_count, u["buckets"])))
-    quota = u["quota_bytes"]
-    pct = lambda b: f"{100 * b / quota:.1f}%"
+    quota, quota_n = u["quota_bytes"], u["quota_objects"]
 
-    table = Table(title=f"Kopah usage ({k.endpoint})", title_justify="left")
-    table.add_column("Bucket / prefix")
+    def pct(b, n):
+        """'% size' and '% objects' cells, both relative to the quota."""
+        return f"{100 * b / quota:.1f}%", ("" if n is None else f"{100 * n / quota_n:.1f}%")
+
+    title = f"Kopah Metered Usage: {account or cred_source}"
+    table = Table(title=title, caption=k.endpoint, title_justify="left", caption_justify="left")
+    table.add_column("Bucket / prefix", no_wrap=True)
     table.add_column("Size", justify="right")
     table.add_column("Objects", justify="right")
-    table.add_column("% quota", justify="right")
+    table.add_column("% Size", justify="right")
+    table.add_column("% Objects", justify="right")
 
     for bucket, nbytes in sorted(u["buckets"].items(), key=lambda kv: -kv[1]):
-        table.add_row(f"[bold]{bucket}[/]", human(nbytes), f"{counts[bucket]:,}", pct(nbytes),
-                      style="bold")
+        table.add_row(f"[bold]{bucket}[/]", human(nbytes), f"{counts[bucket]:,}",
+                      *pct(nbytes, counts[bucket]), style="bold")
         if args.quick or counts[bucket] == 0:
             continue
         with console.status(f"Listing {bucket} ({counts[bucket]:,} objects)..."):
@@ -183,22 +196,24 @@ def main():
             if 100 * b / quota < args.min_percent:
                 small_b, small_n, small_k = small_b + b, small_n + n, small_k + 1
                 continue
-            table.add_row(f"  {p}", human(b), f"{n:,}", pct(b))
+            table.add_row(f"  {p}", human(b), f"{n:,}", *pct(b, n))
         if small_k:
             table.add_row(f"  [dim]({small_k} smaller prefixes)[/]", human(small_b),
-                          f"{small_n:,}", pct(small_b), style="dim")
+                          f"{small_n:,}", *pct(small_b, small_n), style="dim")
         if mpu_n:
-            table.add_row(f"  [yellow]incomplete multipart uploads ({mpu_n})[/]",
-                          human(mpu_bytes), "", pct(mpu_bytes), style="yellow")
+            table.add_row(f"  [yellow]({mpu_n} incomplete uploads)[/]",
+                          human(mpu_bytes), "", *pct(mpu_bytes, None), style="yellow")
 
-    remaining = quota - u["total_bytes"]
-    color = "red" if remaining < 0.1 * quota else "yellow" if remaining < 0.25 * quota else "green"
+    total_b, total_n = u["total_bytes"], u["total_objects"]
+    rem_b, rem_n = quota - total_b, quota_n - total_n
+    color = "red" if rem_b < 0.1 * quota else "yellow" if rem_b < 0.25 * quota else "green"
+    rem_pct_b, rem_pct_n = pct(rem_b, rem_n)
     table.add_section()
-    table.add_row("[bold]Total (metered)[/]", human(u["total_bytes"]),
-                  f"{u['total_objects']:,}", pct(u["total_bytes"]), style="bold")
-    table.add_row("Quota", human(quota), f"{u['quota_objects']:,}", "100.0%")
-    table.add_row(f"[{color}]Remaining[/]", f"[{color}]{human(remaining)}[/]",
-                  f"{u['quota_objects'] - u['total_objects']:,}", f"[{color}]{pct(remaining)}[/]")
+    table.add_row("[bold]Total (metered)[/]", human(total_b), f"{total_n:,}",
+                  *pct(total_b, total_n), style="bold")
+    table.add_row("Quota", human(quota), f"{quota_n:,}", "100.0%", "100.0%")
+    table.add_row(f"[{color}]Remaining[/]", f"[{color}]{human(rem_b)}[/]", f"{rem_n:,}",
+                  f"[{color}]{rem_pct_b}[/]", rem_pct_n)
     Console().print(table)
 
 
